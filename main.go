@@ -42,13 +42,13 @@ func main() {
 	for id, name := range v.names {
 		stream := filepath.Join(*root, "data_stream", getName(name))
 		p := v.protocols[id]
-		p = append(protocol{pipelineOption}, p...)
+		p = append(protocol{dataStreamOption, pipelineOption}, p...)
 		p = append(p, processorsOption, tagsOption)
 		err = writeHandlBars(name, p, stream)
 		if err != nil {
 			log.Fatalf("failed writing %s handlebars: %v", name, err)
 		}
-		err = writeManifest(p, stream)
+		err = writeManifest(name, p, stream)
 		if err != nil {
 			log.Fatalf("failed writing %s manifest: %v", name, err)
 		}
@@ -71,17 +71,17 @@ func writeHandlBars(name string, p protocol, root string) (err error) {
 		if exclude[o.name] {
 			continue
 		}
-		always := o.name == "ports"
+		always := o.name == "ports" || o.required
 		if !always {
 			fmt.Fprintf(f, "{{#if %s}}\n", label(o.name))
 		}
 		switch o.value.(type) {
 		case *ast.SequenceNode:
 			fmt.Fprintf(f, `%[1]s:
-{{#each %[1]s as |%[2]s|}}
-  - {{%[2]s}}
+{{#each %[2]s as |%[3]s|}}
+  - {{%[3]s}}
 {{/each}}
-`, label(o.name), elem(o.name))
+`, o.name, label(o.name), elem(o.name))
 		default:
 			if o.name == "processors" {
 				fmt.Fprintf(f, "%[1]s:\n{{%[1]s}}\n", o.name)
@@ -113,7 +113,7 @@ interface:
 	return nil
 }
 
-func writeManifest(p protocol, root string) (err error) {
+func writeManifest(name string, p protocol, root string) (err error) {
 	file, err := parser.ParseFile(filepath.Join(root, "manifest.yml"), parser.ParseComments)
 	if err != nil {
 		return err
@@ -134,7 +134,11 @@ func writeManifest(p protocol, root string) (err error) {
 			continue
 		}
 
-		varMap := ast.Mapping(&token.Token{}, false,
+		title := o.title
+		if title == "" {
+			title = strings.Title(strings.ReplaceAll(o.name, "_", " "))
+		}
+		mappings := []*ast.MappingValueNode{
 			ast.MappingValue(&token.Token{},
 				ast.String(&token.Token{Value: "name", Position: &token.Position{Column: col}}),
 				ast.String(&token.Token{Value: o.name, Position: &token.Position{Column: col}}),
@@ -145,7 +149,7 @@ func writeManifest(p protocol, root string) (err error) {
 			),
 			ast.MappingValue(&token.Token{},
 				ast.String(&token.Token{Value: "title", Position: &token.Position{Column: col}}),
-				ast.String(&token.Token{Value: strings.Title(strings.ReplaceAll(o.name, "_", " ")), Position: &token.Position{Column: col + 1}}),
+				ast.String(&token.Token{Value: title, Position: &token.Position{Column: col + 1}}),
 			),
 			ast.MappingValue(&token.Token{},
 				ast.String(&token.Token{Value: "description", Position: &token.Position{Column: col}}),
@@ -153,7 +157,7 @@ func writeManifest(p protocol, root string) (err error) {
 			),
 			ast.MappingValue(&token.Token{},
 				ast.String(&token.Token{Value: "show_user", Position: &token.Position{Column: col}}),
-				ast.Bool(&token.Token{Value: "false", Position: &token.Position{Column: col + 1}}),
+				ast.Bool(&token.Token{Value: fmt.Sprint(false || o.showUser), Position: &token.Position{Column: col + 1}}),
 			),
 			ast.MappingValue(&token.Token{},
 				ast.String(&token.Token{Value: "multi", Position: &token.Position{Column: col}}),
@@ -161,9 +165,16 @@ func writeManifest(p protocol, root string) (err error) {
 			),
 			ast.MappingValue(&token.Token{},
 				ast.String(&token.Token{Value: "required", Position: &token.Position{Column: col}}),
-				ast.Bool(&token.Token{Value: fmt.Sprint(false), Position: &token.Position{Column: col}}),
+				ast.Bool(&token.Token{Value: fmt.Sprint(false || o.required), Position: &token.Position{Column: col}}),
 			),
-		)
+		}
+		if o.deflt != nil {
+			mappings = append(mappings, ast.MappingValue(&token.Token{},
+				ast.String(&token.Token{Value: "default", Position: &token.Position{Column: col}}),
+				ast.String(&token.Token{Value: "network_traffic." + o.deflt(name), Position: &token.Position{Column: col}}),
+			))
+		}
+		varMap := ast.Mapping(&token.Token{}, false, mappings...)
 		vars.Values = append(vars.Values, varMap)
 	}
 
@@ -240,6 +251,12 @@ type option struct {
 	node    ast.Node
 	value   ast.Node
 	comment string
+
+	// Manually set.
+	title    string
+	required bool
+	showUser bool
+	deflt    func(string) string
 }
 
 var pipelineOption = func() option {
@@ -248,7 +265,7 @@ var pipelineOption = func() option {
 	col := 0
 	m := ast.MappingValue(&token.Token{},
 		ast.String(&token.Token{Value: name, Position: &token.Position{Column: col}}),
-		ast.String(&token.Token{Value: comment, Position: &token.Position{Column: col}}),
+		ast.String(&token.Token{Value: "", Position: &token.Position{Column: col}}),
 	)
 	return option{
 		name:    name,
@@ -287,6 +304,27 @@ var tagsOption = func() option {
 		node:    m,
 		value:   m.Value,
 		comment: comment,
+	}
+}()
+
+var dataStreamOption = func() option {
+	name := "data_stream.dataset"
+	comment := "Dataset to write data to. Changing the dataset will send the data to a different index. You can't use `-` in the name of a dataset and only valid characters for [Elasticsearch index names](https://www.elastic.co/guide/en/elasticsearch/reference/current/docs-index_.html)."
+	col := 0
+	m := ast.MappingValue(&token.Token{},
+		ast.String(&token.Token{Value: name, Position: &token.Position{Column: col}}),
+		ast.String(&token.Token{Value: "", Position: &token.Position{Column: col}}),
+	)
+	return option{
+		name:    name,
+		node:    m,
+		value:   m.Value,
+		comment: comment,
+
+		title:    "Dataset name",
+		required: true,
+		showUser: true,
+		deflt:    getName,
 	}
 }()
 
