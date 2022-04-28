@@ -42,7 +42,7 @@ func main() {
 	for id, name := range v.names {
 		stream := filepath.Join(*root, "data_stream", getName(name))
 		p := v.protocols[id]
-		p = append(protocol{dataStreamOption, pipelineOption}, p...)
+		p = append(protocol{ /*dataStreamOption, */ pipelineOption}, p...)
 		p = append(p, processorsOption, tagsOption)
 		err = writeHandlBars(name, p, stream)
 		if err != nil {
@@ -68,9 +68,8 @@ func writeHandlBars(name string, p protocol, root string) (err error) {
 
 	fmt.Fprintf(f, `type: %s
 ports: [{{port}}]
-data_stream:
-  dataset: {{data_stream.dataset}}
 `, name)
+	// fmt.Fprintln(f, "data_stream:\n  dataset: {{data_stream.dataset}}")
 	for _, o := range p {
 		if exclude[o.name] || o.name == "ports" || o.name == "data_stream.dataset" {
 			continue
