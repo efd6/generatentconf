@@ -66,13 +66,16 @@ func writeHandlBars(name string, p protocol, root string) (err error) {
 		}
 	}()
 
-	fmt.Fprintf(f, "type: %s\n", name)
+	fmt.Fprintf(f, `type: %s
+ports: [{{port}}]
+data_stream:
+  dataset: {{data_stream.dataset}}
+`, name)
 	for _, o := range p {
-		if exclude[o.name] {
+		if exclude[o.name] || o.name == "ports" || o.name == "data_stream.dataset" {
 			continue
 		}
-		always := o.name == "ports" || o.required
-		if !always {
+		if !o.required {
 			fmt.Fprintf(f, "{{#if %s}}\n", label(o.name))
 		}
 		switch o.value.(type) {
@@ -89,7 +92,7 @@ func writeHandlBars(name string, p protocol, root string) (err error) {
 				fmt.Fprintf(f, "%[1]s: {{%[1]s}}\n", o.name)
 			}
 		}
-		if !always {
+		if !o.required {
 			fmt.Fprintln(f, "{{/if}}")
 		}
 	}
