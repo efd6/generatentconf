@@ -95,15 +95,7 @@ ports: [{{port}}]
 			fmt.Fprintln(f, "{{/if}}")
 		}
 	}
-	fmt.Fprintln(f, `{{#if processes}}
-procs:
-  enabled: true
-  monitored:
-    {{#each processes as |process|}}
-    - cmdline_grep: {{process}}
-    {{/each}}
-{{/if}}
-{{#if interface}}
+	fmt.Fprintln(f, `{{#if interface}}
 interface:
 {{#if (contains ".pcap" interface)}}
   file: {{interface}}
