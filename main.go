@@ -42,7 +42,7 @@ func main() {
 	for id, name := range v.names {
 		stream := filepath.Join(*root, "data_stream", getName(name))
 		p := v.protocols[id]
-		p = append(protocol{ /*dataStreamOption, */ pipelineOption}, p...)
+		// p = append(protocol{dataStreamOption, pipelineOption}, p...)
 		p = append(p, processorsOption, tagsOption)
 		err = writeHandlBars(name, p, stream)
 		if err != nil {
