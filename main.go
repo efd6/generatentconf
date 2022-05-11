@@ -66,9 +66,16 @@ func writeHandlBars(name string, p protocol, root string) (err error) {
 		}
 	}()
 
-	fmt.Fprintf(f, `type: %s
-ports: [{{port}}]
-`, name)
+	fmt.Fprintf(f, "type: %s\n", name)
+	if name != "icmp" {
+		fmt.Fprintf(f, `{{#if port}}
+ports:
+{{#each port as |p|}}
+  - {{p}}
+{{/each}}
+{{/if}}
+`)
+	}
 	// fmt.Fprintln(f, "data_stream:\n  dataset: {{data_stream.dataset}}")
 	for _, o := range p {
 		if exclude[o.name] || o.name == "ports" || o.name == "data_stream.dataset" {
